@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0a7c4a" />
+<meta name="description" content="Market ürünlerini barkodla sorgula ve sepet toplamını hesapla." />
+<title>Market Barkod</title>
+
+<!-- PWA Manifest (inline, harici dosya gerekmez) -->
+<link rel="manifest" href='data:application/manifest+json,{
+  "name":"Market Barkod",
+  "short_name":"Barkod",
+  "start_url":"./",
+  "scope":"./",
+  "display":"standalone",
+  "orientation":"portrait",
+  "background_color":"#f3f6f4",
+  "theme_color":"#0a7c4a",
+  "lang":"tr",
+  "icons":[
+    {"src":"data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 192 192%22><rect width=%22192%22 height=%22192%22 rx=%2232%22 fill=%22%230a7c4a%22/><text x=%2296%22 y=%22125%22 font-size=%2290%22 text-anchor=%22middle%22 fill=%22white%22>🛒</text></svg>","sizes":"192x192","type":"image/svg+xml","purpose":"any maskable"},
+    {"src":"data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 512 512%22><rect width=%22512%22 height=%22512%22 rx=%2280%22 fill=%22%230a7c4a%22/><text x=%22256%22 y=%22330%22 font-size=%22240%22 text-anchor=%22middle%22 fill=%22white%22>🛒</text></svg>","sizes":"512x512","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}' />
+
+<style>
+  :root{
+    --green:#0a7c4a;
+    --green-dark:#075e38;
+    --bg:#f3f6f4;
+    --card:#ffffff;
+    --text:#12211a;
+    --muted:#5b6b63;
+    --border:#dde5e0;
+    --danger:#c0392b;
+    --warn:#b7791f;
+    --radius:14px;
+    --shadow:0 2px 10px rgba(0,0,0,.06);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--text);
+    display:flex; flex-direction:column;
+    min-height:100vh; overscroll-behavior-y:none;
+  }
+
+  /* ---------- Header ---------- */
+  header{
+    background:linear-gradient(135deg,var(--green),var(--green-dark));
+    color:#fff; padding:12px 16px;
+    display:flex; align-items:center; gap:10px;
+    position:sticky; top:0; z-index:50;
+    box-shadow:0 2px 8px rgba(0,0,0,.15);
+  }
+  header .logo{font-size:22px}
+  header h1{font-size:17px;margin:0;flex:1;font-weight:700;letter-spacing:.2px}
+  header .tag{font-size:11px;background:rgba(255,255,255,.2);padding:3px 8px;border-radius:20px}
+
+  /* ---------- Mode tabs ---------- */
+  .tabs{display:flex;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:51px;z-index:49}
+  .tab{
+    flex:1;border:0;background:none;padding:13px 8px;font-size:13.5px;font-weight:600;
+    color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;
+    font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .tab.active{color:var(--green);border-bottom-color:var(--green);background:#eaf5ef}
+  .tab .badge{background:var(--green);color:#fff;font-size:11px;min-width:18px;padding:1px 6px;border-radius:10px}
+  .tab:not(.active) .badge{background:#9aa8a0}
+
+  /* ---------- Main ---------- */
+  main{flex:1;display:flex;flex-direction:column;width:100%;max-width:520px;margin:0 auto}
+
+  /* ---------- Camera ---------- */
+  .camera-wrap{position:relative;background:#000;width:100%;aspect-ratio:4/3;max-height:44vh;overflow:hidden;display:none}
+  .camera-wrap.active{display:block}
+  .camera-wrap video{width:100%;height:100%;object-fit:cover;display:block}
+  .scan-frame{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:75%;height:55%;border:2px solid rgba(255,255,255,.85);border-radius:12px;
+    box-shadow:0 0 0 2000px rgba(0,0,0,.35); pointer-events:none;
+  }
+  .scan-line{
+    position:absolute;left:5%;width:90%;height:3px;border-radius:2px;
+    background:linear-gradient(90deg,transparent,#2ecc71,transparent);
+    box-shadow:0 0 10px #2ecc71;animation:scan 2s ease-in-out infinite;
+  }
+  @keyframes scan{0%,100%{top:8%}50%{top:88%}}
+  .cam-status{
+    position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+    background:rgba(0,0,0,.7);color:#fff;font-size:12px;padding:5px 14px;border-radius:20px;
+    white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis
+  }
+  .cam-error{
+    position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;background:rgba(0,0,0,.85);color:#fff;text-align:center;padding:20px
+  }
+  .cam-error .ic{font-size:38px}
+  .cam-error p{font-size:13px;line-height:1.5;margin:0;max-width:300px}
+  .cam-error button{
+    background:var(--green);color:#fff;border:0;padding:9px 20px;border-radius:8px;
+    font-size:13px;font-weight:700;cursor:pointer;font-family:inherit
+  }
+
+  /* ---------- Camera toggle ---------- */
+  .cam-toggle-wrap{padding:14px 16px 6px;text-align:center}
+  .btn-cam{
+    display:inline-flex;align-items:center;gap:8px;
+    background:var(--green);color:#fff;border:0;padding:13px 28px;border-radius:12px;
+    font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;
+    box-shadow:0 4px 12px rgba(10,124,74,.35);transition:transform .15s
+  }
+  .btn-cam:active{transform:scale(.97)}
+  .btn-cam.stop{background:var(--danger);box-shadow:0 4px 12px rgba(192,57,43,.35)}
+
+  /* ---------- Result area ---------- */
+  .result{padding:0 16px 16px;flex:1;display:none}
+  .result.active{display:block}
+
+  /* Product card */
+  .product-card{
+    background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);
+    border:1px solid var(--border);animation:pop .25s ease-out
+  }
+  @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .pc-top{display:flex;align-items:flex-start;gap:12px}
+  .pc-icon{width:48px;height:48px;border-radius:12px;background:#eaf5ef;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+  .pc-title{flex:1;min-width:0}
+  .pc-title h3{margin:0 0 2px;font-size:16.5px;font-weight:700}
+  .pc-title .brand{font-size:12.5px;color:var(--muted)}
+  .pc-price{font-size:20px;font-weight:800;color:var(--green);white-space:nowrap}
+  .pc-details{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+  .pc-details .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700}
+  .pc-details .val{font-size:13.5px;font-weight:600;margin-top:1px}
+  .barcode-display{
+    margin-top:10px;padding:6px 10px;text-align:center;font-family:'Courier New',monospace;
+    font-size:12.5px;letter-spacing:2px;color:var(--muted);background:var(--bg);border-radius:8px;word-break:break-all
+  }
+
+  /* Not found */
+  .notfound{
+    background:#fdecea;border:1px solid #f5c6c2;border-radius:var(--radius);padding:22px;text-align:center;
+    animation:pop .25s ease-out
+  }
+  .notfound .ic{font-size:36px;margin-bottom:8px}
+  .notfound h3{color:var(--danger);font-size:15.5px;margin:0 0 5px}
+  .notfound p{color:var(--muted);font-size:12.5px;margin:0 0 10px;line-height:1.5}
+  .notfound code{
+    display:inline-block;font-family:'Courier New',monospace;background:#fff;padding:5px 10px;
+    border-radius:6px;font-size:12.5px;letter-spacing:2px;color:#333
+  }
+
+  /* Cart */
+  .cart-head{display:flex;justify-content:space-between;align-items:center;padding:12px 0 8px}
+  .cart-head h3{margin:0;font-size:14.5px;font-weight:700}
+  .cart-head .count{font-size:11.5px;background:var(--bg);color:var(--muted);padding:3px 10px;border-radius:10px;font-weight:700}
+  .cart-list{display:flex;flex-direction:column;gap:8px}
+  .cart-item{
+    display:flex;align-items:center;gap:10px;background:var(--card);border-radius:12px;
+    padding:11px 13px;border:1px solid var(--border);animation:pop .2s ease-out
+  }
+  .ci-icon{width:36px;height:36px;border-radius:9px;background:#eaf5ef;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+  .ci-info{flex:1;min-width:0}
+  .ci-info .n{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ci-info .m{font-size:11px;color:var(--muted);margin-top:1px}
+  .ci-qty{font-size:12px;color:var(--muted);font-weight:600;margin-right:2px}
+  .ci-price{font-size:14px;font-weight:700;color:var(--green);white-space:nowrap}
+  .ci-remove{
+    background:none;border:0;color:var(--muted);font-size:18px;line-height:1;padding:4px 6px;
+    cursor:pointer;border-radius:50%
+  }
+  .ci-remove:active{background:#fdecea;color:var(--danger)}
+
+  .empty-cart{text-align:center;padding:28px 16px;color:var(--muted)}
+  .empty-cart .ic{font-size:36px;opacity:.45;margin-bottom:8px}
+  .empty-cart p{font-size:12.5px;line-height:1.6;margin:0}
+
+  /* ---------- Manual entry ---------- */
+  .manual{padding:0 16px 16px}
+  .manual-toggle{
+    width:100%;background:var(--card);border:1px dashed var(--border);color:var(--muted);
+    padding:11px;border-radius:12px;font-size:12.5px;font-weight:600;cursor:pointer;
+    font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px
+  }
+  .manual-form{display:none;gap:8px;margin-top:8px}
+  .manual-form.open{display:flex}
+  .manual-form input{
+    flex:1;min-width:0;padding:11px 13px;border:1px solid var(--border);border-radius:10px;
+    font-size:15px;font-family:inherit;outline:none;letter-spacing:1px;background:#fff
+  }
+  .manual-form input:focus{border-color:var(--green)}
+  .manual-form button{
+    background:var(--green);color:#fff;border:0;padding:11px 18px;border-radius:10px;
+    font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap
+  }
+
+  /* ---------- Cart total bar ---------- */
+  .total-bar{
+    display:none;background:var(--card);border-top:2px solid var(--border);
+    padding:14px 16px;justify-content:space-between;align-items:center;
+    position:sticky;bottom:0;z-index:40;box-shadow:0 -4px 14px rgba(0,0,0,.06)
+  }
+  .total-bar.active{display:flex}
+  .tb-left .lbl{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.5px}
+  .tb-left .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .tb-right{display:flex;align-items:center;gap:12px}
+  .tb-amount{font-size:24px;font-weight:800;color:var(--green)}
+  .tb-clear{
+    background:#fdecea;color:var(--danger);border:0;padding:9px 14px;border-radius:10px;
+    font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit
+  }
+
+  /* ---------- Toast ---------- */
+  .toast{
+    position:fixed;left:50%;bottom:84px;transform:translateX(-50%) translateY(16px);
+    background:#12211a;color:#fff;padding:11px 22px;border-radius:12px;font-size:13px;font-weight:600;
+    opacity:0;pointer-events:none;transition:all .25s;z-index:1000;max-width:88vw;text-align:center;
+    box-shadow:0 8px 22px rgba(0,0,0,.25)
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.success{background:#0a7c4a}
+  .toast.error{background:#c0392b}
+  .toast.warn{background:#b7791f}
+
+  /* Flash */
+  .flash{position:fixed;inset:0;background:rgba(46,204,113,.15);pointer-events:none;opacity:0;transition:opacity .15s;z-index:999}
+  .flash.on{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- ================= HEADER ================= -->
+<header>
+  <span class="logo">🛒</span>
+  <h1>Market Barkod</h1>
+  <span class="tag">PWA</span>
+</header>
+
+<!-- ================= MODE TABS ================= -->
+<div class="tabs" role="tablist">
+  <button class="tab active" data-mode="single" id="tabSingle" role="tab">🔍 Tekli Sorgu</button>
+  <button class="tab" data-mode="cart" id="tabCart" role="tab">
+    🛍️ Sepet <span class="badge" id="cartBadge">0</span>
+  </button>
+</div>
+
+<!-- ================= MAIN ================= -->
+<main>
+
+  <!-- Kamera -->
+  <div class="camera-wrap" id="cameraWrap">
+    <video id="cameraVideo" playsinline muted autoplay></video>
+    <div class="scan-frame"><div class="scan-line"></div></div>
+    <div class="cam-status" id="camStatus">Barkod okutun...</div>
+    <div class="cam-error" id="camError">
+      <div class="ic">📷</div>
+      <p id="camErrorMsg">Kamera başlatılamadı.</p>
+      <button onclick="startCamera()">Tekrar Dene</button>
+    </div>
+  </div>
+
+  <!-- Kamera aç/kapat -->
+  <div class="cam-toggle-wrap">
+    <button class="btn-cam" id="btnCam">
+      <span id="btnCamIcon">📷</span>
+      <span id="btnCamText">Kamerayı Aç</span>
+    </button>
+  </div>
+
+  <!-- Sonuç: Tekli Mod -->
+  <div class="result" id="singleResult">
+    <div id="singleContent"></div>
+  </div>
+
+  <!-- Sonuç: Sepet Modu -->
+  <div class="result" id="cartResult">
+    <div class="cart-head">
+      <h3>🛍️ Sepetteki Ürünler</h3>
+      <span class="count" id="cartCount">0 ürün</span>
+    </div>
+    <div class="cart-list" id="cartList"></div>
+    <div class="empty-cart" id="cartEmpty">
+      <div class="ic">🛒</div>
+      <p>Sepet boş.<br>Ürün barkodlarını okutarak sepete ekleyin.</p>
+    </div>
+  </div>
+
+  <!-- Elle giriş -->
+  <div class="manual">
+    <button class="manual-toggle" id="manualToggle">⌨️ Elle Barkod Gir</button>
+    <div class="manual-form" id="manualForm">
+      <input type="text" id="manualInput" placeholder="Barkod numarası..." inputmode="numeric" autocomplete="off" />
+      <button id="manualSubmit">Sorgula</button>
+    </div>
+  </div>
+
+</main>
+
+<!-- Sepet toplamı -->
+<div class="total-bar" id="totalBar">
+  <div class="tb-left">
+    <div class="lbl">TOPLAM</div>
+    <div class="sub" id="totalSub">0 ürün</div>
+  </div>
+  <div class="tb-right">
+    <div class="tb-amount" id="totalAmount">₺0,00</div>
+    <button class="tb-clear" id="clearCart">Temizle</button>
+  </div>
+</div>
+
+<!-- Toast & Flash -->
+<div class="toast" id="toast"></div>
+<div class="flash" id="flash"></div>
+
+<script>
+/* =========================================================
+   1) JSON ÜRÜN VERİTABANI (en az 5 ürün)
+   ========================================================= */
+const PRODUCTS = [
+  {
+    barcode: "8690504010011",
+    name: "Süt",
+    brand: "Sütaş",
+    category: "Gıda",
+    price: 32.50,
+    amount: "1 L",
+    icon: "🥛"
+  },
+  {
+    barcode: "8690504020028",
+    name: "Ekmek",
+    brand: "Uno",
+    category: "Gıda",
+    price: 12.00,
+    amount: "500 g",
+    icon: "🍞"
+  },
+  {
+    barcode: "8690504030035",
+    name: "Deterjan",
+    brand: "Persil",
+    category: "Temizlik",
+    price: 89.90,
+    amount: "1.5 L",
+    icon: "🧴"
+  },
+  {
+    barcode: "8690504040042",
+    name: "Şampuan",
+    brand: "Head & Shoulders",
+    category: "Kozmetik",
+    price: 65.75,
+    amount: "400 ml",
+    icon: "🧴"
+  },
+  {
+    barcode: "8690504050059",
+    name: "Çikolata",
+    brand: "Milka",
+    category: "Gıda",
+    price: 18.25,
+    amount: "100 g",
+    icon: "🍫"
+  },
+  {
+    barcode: "8690504060066",
+    name: "Diş Macunu",
+    brand: "Colgate",
+    category: "Kozmetik",
+    price: 42.00,
+    amount: "75 ml",
+    icon: "🪥"
+  },
+  {
+    barcode: "8690504070073",
+    name: "Pirinç",
+    brand: "Duru",
+    category: "Gıda",
+    price: 54.50,
+    amount: "1 kg",
+    icon: "🍚"
+  }
+];
+
+/* =========================================================
+   2) DURUM DEĞİŞKENLERİ
+   ========================================================= */
+let currentMode   = "single";   // "single" | "cart"
+let cameraStream  = null;
+let detector      = null;
+let detectTimer   = null;
+let cameraActive  = false;
+
+// Dedup: aynı barkod 1.5 sn içinde tekrar okunursa yoksay
+const DEDUP_MS    = 1500;
+let lastBarcode   = "";
+let lastScanTime  = 0;
+
+// Sepet: her satır { product, qty, key }
+let cart          = [];
+let rowKey        = 0;
+
+/* =========================================================
+   3) YARDIMCILAR
+   ========================================================= */
+function formatPrice(n){
+  return "₺" + n.toFixed(2).replace(".", ",");
+}
+function findProduct(barcode){
+  return PRODUCTS.find(p => p.barcode === barcode);
+}
+function showToast(msg, type=""){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show " + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = "toast"; }, 2200);
+}
+function flash(){
+  const f = document.getElementById("flash");
+  f.classList.add("on");
+  setTimeout(() => f.classList.remove("on"), 180);
+}
+function vibrate(){
+  if (navigator.vibrate) navigator.vibrate(70);
+}
+
+/* =========================================================
+   4) MOD YÖNETİMİ
+   ========================================================= */
+function setMode(mode){
+  currentMode = mode;
+  document.getElementById("tabSingle").classList.toggle("active", mode === "single");
+  document.getElementById("tabCart").classList.toggle("active", mode === "cart");
+  document.getElementById("singleResult").classList.toggle("active", mode === "single");
+  document.getElementById("cartResult").classList.toggle("active", mode === "cart");
+  document.getElementById("totalBar").classList.toggle("active", mode === "cart");
+
+  // Kamera açıksa taramaya devam; durum metnini güncelle
+  document.getElementById("camStatus").textContent =
+    mode === "single" ? "Tekli sorgu: barkod okutun..." : "Sepet: barkod okutarak ürün ekleyin...";
+
+  renderCart();
+}
+document.getElementById("tabSingle").onclick = () => setMode("single");
+document.getElementById("tabCart").onclick   = () => setMode("cart");
+
+/* =========================================================
+   5) KAMERA YÖNETİMİ
+   ========================================================= */
+async function startCamera(){
+  const video   = document.getElementById("cameraVideo");
+  const errorEl = document.getElementById("camError");
+  const status  = document.getElementById("camStatus");
+
+  errorEl.style.display = "none";
+  status.textContent = "Kamera başlatılıyor...";
+
+  // BarcodeDetector desteği?
+  if (!("BarcodeDetector" in window)){
+    errorEl.style.display = "flex";
+    document.getElementById("camErrorMsg").textContent =
+      "Bu tarayıcı BarcodeDetector API'sini desteklemiyor. Lütfen Android Chrome kullanın veya elle barkod girin.";
+    status.textContent = "Desteklenmiyor";
+    showToast("BarcodeDetector API desteklenmiyor", "error");
+    return;
+  }
+
+  try{
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+
+    video.srcObject = cameraStream;
+    await video.play();
+
+    cameraActive = true;
+    document.getElementById("cameraWrap").classList.add("active");
+    document.getElementById("btnCam").classList.add("stop");
+    document.getElementById("btnCamIcon").textContent = "⏹";
+    document.getElementById("btnCamText").textContent = "Kamerayı Kapat";
+    status.textContent = currentMode === "single"
+      ? "Tekli sorgu: barkod okutun..."
+      : "Sepet: barkod okutarak ürün ekleyin...";
+
+    // Klasik barkod formatlarını destekle
+    const supported = await BarcodeDetector.getSupportedFormats();
+    const classic = supported.filter(f =>
+      ["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf"].includes(f)
+    );
+    detector = new BarcodeDetector({
+      formats: classic.length ? classic : ["ean_13","ean_8","code_128"]
+    });
+
+    startDetectionLoop();
+
+  } catch(err){
+    console.error("Kamera hatası:", err);
+    cameraActive = false;
+    document.getElementById("cameraWrap").classList.add("active");
+    errorEl.style.display = "flex";
+
+    let msg = "Kamera başlatılamadı.";
+    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError"){
+      msg = "Kamera izni verilmedi. Barkod okutmak için lütfen tarayıcı ayarlarından kamera iznini verin veya elle barkod girin.";
+      showToast("Kamera izni reddedildi", "warn");
+    } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError"){
+      msg = "Cihazda kamera bulunamadı. Elle barkod girme özelliğini kullanabilirsiniz.";
+    } else if (err.name === "NotReadableError"){
+      msg = "Kamera başka bir uygulama tarafından kullanılıyor. Diğer uygulamaları kapatıp tekrar deneyin.";
+    } else {
+      msg = "Kamera başlatılamadı: " + (err.message || err.name) + ". Elle barkod girebilirsiniz.";
+    }
+    document.getElementById("camErrorMsg").textContent = msg;
+    status.textContent = "Kamera hatası";
+    document.getElementById("btnCam").classList.remove("stop");
+    document.getElementById("btnCamIcon").textContent = "📷";
+    document.getElementById("btnCamText").textContent = "Kamerayı Aç";
+  }
+}
+
+function stopCamera(){
+  if (detectTimer){ clearInterval(detectTimer); detectTimer = null; }
+  if (cameraStream){
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  cameraActive = false;
+  document.getElementById("cameraWrap").classList.remove("active");
+  document.getElementById("camError").style.display = "none";
+  document.getElementById("btnCam").classList.remove("stop");
+  document.getElementById("btnCamIcon").textContent = "📷";
+  document.getElementById("btnCamText").textContent = "Kamerayı Aç";
+}
+
+function startDetectionLoop(){
+  const video = document.getElementById("cameraVideo");
+  detectTimer = setInterval(async () => {
+    if (!cameraActive || !detector || video.readyState < 2) return;
+    try{
+      const codes = await detector.detect(video);
+      if (codes.length > 0){
+        const raw = codes[0].rawValue;
+        if (!raw) return;
+
+        const now = Date.now();
+        // Dedup: aynı barkod 1.5 sn içinde tekrar okunursa yoksay
+        if (raw === lastBarcode && (now - lastScanTime) < DEDUP_MS) return;
+
+        lastBarcode  = raw;
+        lastScanTime = now;
+        handleBarcode(raw);
+      }
+    } catch(e){ /* kare atlandı */ }
+  }, 250);
+}
+
+/* =========================================================
+   6) BARKOD İŞLEME
+   ========================================================= */
+function handleBarcode(barcode){
+  flash();
+  vibrate();
+
+  const product = findProduct(barcode);
+
+  if (!product){
+    if (currentMode === "single"){
+      renderNotFound(barcode);
+    } else {
+      showToast("Ürün bulunamadı: " + barcode, "error");
+    }
+    document.getElementById("camStatus").textContent = "Okundu: " + barcode + " (bulunamadı)";
+    return;
+  }
+
+  if (currentMode === "single"){
+    renderProduct(product);
+    document.getElementById("camStatus").textContent = "Okundu: " + product.name;
+  } else {
+    addToCart(product);
+    document.getElementById("camStatus").textContent = "Eklendi: " + product.name;
+  }
+}
+
+/* =========================================================
+   7) TEKLİ SORGU GÖRÜNÜMÜ
+   ========================================================= */
+function renderProduct(p){
+  const box = document.getElementById("singleContent");
+  box.innerHTML = `
+    <div class="product-card">
+      <div class="pc-top">
+        <div class="pc-icon">${p.icon}</div>
+        <div class="pc-title">
+          <h3>${escapeHtml(p.name)}</h3>
+          <div class="brand">${escapeHtml(p.brand)}</div>
+        </div>
+        <div class="pc-price">${formatPrice(p.price)}</div>
+      </div>
+      <div class="pc-details">
+        <div><div class="lbl">Kategori</div><div class="val">${escapeHtml(p.category)}</div></div>
+        <div><div class="lbl">Miktar</div><div class="val">${escapeHtml(p.amount)}</div></div>
+      </div>
+      <div class="barcode-display">${p.barcode}</div>
+    </div>`;
+}
+
+function renderNotFound(barcode){
+  const box = document.getElementById("singleContent");
+  box.innerHTML = `
+    <div class="notfound">
+      <div class="ic">❌</div>
+      <h3>Ürün bulunamadı.</h3>
+      <p>Okutulan barkod ürün veritabanında kayıtlı değil.</p>
+      <code>${escapeHtml(barcode)}</code>
+    </div>`;
+  showToast("Ürün bulunamadı.", "error");
+}
+
+/* =========================================================
+   8) SEPET YÖNETİMİ
+   ========================================================= */
+function addToCart(product){
+  // Aynı ürün zaten sepetteyse adedi artır
+  const existing = cart.find(r => r.product.barcode === product.barcode);
+  if (existing){
+    existing.qty += 1;
+  } else {
+    cart.push({ product, qty: 1, key: ++rowKey });
+  }
+  renderCart();
+  showToast(product.name + " sepete eklendi", "success");
+  vibrate();
+}
+
+function removeRow(key){
+  cart = cart.filter(r => r.key !== key);
+  renderCart();
+}
+
+function renderCart(){
+  const list  = document.getElementById("cartList");
+  const empty = document.getElementById("cartEmpty");
+  const badge = document.getElementById("cartBadge");
+  const count = document.getElementById("cartCount");
+  const sub   = document.getElementById("totalSub");
+  const total = document.getElementById("totalAmount");
+
+  const totalQty = cart.reduce((s, r) => s + r.qty, 0);
+  const totalAmt = cart.reduce((s, r) => s + r.product.price * r.qty, 0);
+
+  badge.textContent = totalQty;
+  count.textContent = totalQty + " ürün";
+  sub.textContent   = totalQty + " ürün";
+  total.textContent = formatPrice(totalAmt);
+
+  if (cart.length === 0){
+    list.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+
+  list.innerHTML = cart.map(r => `
+    <div class="cart-item">
+      <div class="ci-icon">${r.product.icon}</div>
+      <div class
